@@ -1,5 +1,0 @@
-{
-  "python.analysis.extraPaths": [
-    "${workspaceFolder}/../lab7/src"
-  ]
-}
