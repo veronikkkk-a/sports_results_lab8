@@ -28,6 +28,31 @@ class SportService:
     def list(self) -> list[Sport]:
         return self.sports.list()
 
+    def get(self, sport_id: int) -> Sport:
+        sport = self.sports.get(sport_id)
+        if sport is None:
+            raise ResourceNotFound("Sport not found")
+        return sport
+
+    def update(self, sport_id: int, updates: dict) -> Sport:
+        try:
+            sport = self.sports.update(sport_id, **updates)
+            if sport is None:
+                raise ResourceNotFound("Sport not found")
+            self.session.commit()
+            self.session.refresh(sport)
+            return sport
+        except ResourceNotFound:
+            raise
+        except IntegrityError as exc:
+            self.session.rollback()
+            raise ResourceConflict("Sport name already exists") from exc
+
+    def delete(self, sport_id: int) -> None:
+        if not self.sports.delete(sport_id):
+            raise ResourceNotFound("Sport not found")
+        self.session.commit()
+
 
 class AthleteService:
     def __init__(self, session: Session):
@@ -46,6 +71,34 @@ class AthleteService:
 
     def list(self, sport_id: int | None = None, name: str | None = None) -> list[Athlete]:
         return self.athletes.list(sport_id, name)
+
+    def get(self, athlete_id: int) -> Athlete:
+        athlete = self.athletes.get(athlete_id)
+        if athlete is None:
+            raise ResourceNotFound("Athlete not found")
+        return athlete
+
+    def update(self, athlete_id: int, updates: dict) -> Athlete:
+        sport_id = updates.get("sport_id")
+        if sport_id is not None and self.sports.get(sport_id) is None:
+            raise ResourceNotFound("Sport not found")
+        try:
+            athlete = self.athletes.update(athlete_id, **updates)
+            if athlete is None:
+                raise ResourceNotFound("Athlete not found")
+            self.session.commit()
+            self.session.refresh(athlete)
+            return athlete
+        except ResourceNotFound:
+            raise
+        except IntegrityError as exc:
+            self.session.rollback()
+            raise ResourceConflict("Athlete already exists for this sport") from exc
+
+    def delete(self, athlete_id: int) -> None:
+        if not self.athletes.delete(athlete_id):
+            raise ResourceNotFound("Athlete not found")
+        self.session.commit()
 
 
 class ResultService:
@@ -88,10 +141,10 @@ class ResultService:
         self._require_sport(sport_id)
         return self.results.ranking(sport_id)
 
-    def statistics(self, sport_id: int) -> tuple[Sport, int, float | None, float | None]:
+    def statistics(self, sport_id: int) -> tuple[Sport, int, float | None, float | None, float | None]:
         sport = self._require_sport(sport_id)
-        count, average, best = self.results.statistics(sport_id)
-        return sport, count, average, best
+        count, average, best, maximum = self.results.statistics(sport_id)
+        return sport, count, average, best, maximum
 
     def _require_sport(self, sport_id: int) -> Sport:
         sport = self.sports.get(sport_id)

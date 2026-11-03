@@ -20,6 +20,25 @@ class SportRepository:
         self.session.refresh(sport)
         return sport
 
+    def update(self, sport_id: int, *, name: str | None = None, discipline: str | None = None) -> Sport | None:
+        sport = self.get(sport_id)
+        if sport is None:
+            return None
+        if name is not None:
+            sport.name = name
+        if discipline is not None:
+            sport.discipline = discipline
+        self.session.flush()
+        return sport
+
+    def delete(self, sport_id: int) -> bool:
+        sport = self.get(sport_id)
+        if sport is None:
+            return False
+        self.session.delete(sport)
+        self.session.flush()
+        return True
+
 
 class AthleteRepository:
     def __init__(self, session: Session):
@@ -41,6 +60,27 @@ class AthleteRepository:
         self.session.commit()
         self.session.refresh(athlete)
         return athlete
+
+    def update(self, athlete_id: int, *, name: str | None = None, category: str | None = None, sport_id: int | None = None) -> Athlete | None:
+        athlete = self.get(athlete_id)
+        if athlete is None:
+            return None
+        if name is not None:
+            athlete.name = name
+        if category is not None:
+            athlete.category = category
+        if sport_id is not None:
+            athlete.sport_id = sport_id
+        self.session.flush()
+        return athlete
+
+    def delete(self, athlete_id: int) -> bool:
+        athlete = self.get(athlete_id)
+        if athlete is None:
+            return False
+        self.session.delete(athlete)
+        self.session.flush()
+        return True
 
 
 class ResultRepository:
@@ -67,8 +107,8 @@ class ResultRepository:
             .order_by(Result.value.asc()))
         return list(self.session.execute(statement).all())
 
-    def statistics(self, sport_id: int) -> tuple[int, float | None, float | None]:
-        statement = (select(func.count(Result.id), func.avg(Result.value), func.min(Result.value))
+    def statistics(self, sport_id: int) -> tuple[int, float | None, float | None, float | None]:
+        statement = (select(func.count(Result.id), func.avg(Result.value), func.min(Result.value), func.max(Result.value))
             .join(Athlete, Result.athlete_id == Athlete.id)
             .where(Athlete.sport_id == sport_id))
         return self.session.execute(statement).one()

@@ -14,6 +14,17 @@ python -m uvicorn sports_api.api:app --reload
 
 Swagger UI: http://127.0.0.1:8000/docs
 
+## REST endpoints
+
+- `GET/POST /sports`, `GET/PATCH/DELETE /sports/{sport_id}`
+- `GET/POST /athletes`, `GET/PATCH/DELETE /athletes/{athlete_id}`
+- `POST /results`, `PATCH/DELETE /results/{result_id}`
+- `GET /sports/{sport_id}/results`, `/ranking`, and `/statistics`
+- `GET /async/rankings?sport_ids=1&sport_ids=2` for concurrent local rankings
+
+PATCH requests may include only fields to change. Required fields cannot be set to `null`; `competition_date` may be cleared with `null`.
+Statistics include the number of results, average, minimum (`best_result` for time-based events), and maximum.
+
 В іншому терміналі:
 ```powershell
 python -m pytest -v

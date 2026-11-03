@@ -10,8 +10,9 @@ from sqlalchemy.orm import Session
 from .database import Base, engine, get_session
 from .external_api import fetch_many_external_rankings, fetch_many_sport_rankings
 from .schemas import (
-    AthleteCreate, AthleteResponse, RankingEntry, ResultCreate, ResultPatch,
+    AthleteCreate, AthletePatch, AthleteResponse, RankingEntry, ResultCreate, ResultPatch,
     ResultResponse, SportCreate, SportResponse, SportStatistics,
+    SportPatch,
 )
 from .services import AthleteService, ResourceConflict, ResourceNotFound, ResultService, SportService
 
@@ -56,6 +57,34 @@ async def get_sports(session: Session = Depends(get_session)):
     return SportService(session).list()
 
 
+@app.get("/sports/{sport_id}", response_model=SportResponse)
+async def get_sport(sport_id: int, session: Session = Depends(get_session)):
+    try:
+        return SportService(session).get(sport_id)
+    except ResourceNotFound as exc:
+        raise_http_error(exc)
+
+
+@app.patch("/sports/{sport_id}", response_model=SportResponse)
+async def update_sport(
+    sport_id: int, data: SportPatch, session: Session = Depends(get_session)
+):
+    try:
+        return SportService(session).update(
+            sport_id, data.model_dump(exclude_unset=True)
+        )
+    except (ResourceNotFound, ResourceConflict) as exc:
+        raise_http_error(exc)
+
+
+@app.delete("/sports/{sport_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_sport(sport_id: int, session: Session = Depends(get_session)) -> None:
+    try:
+        SportService(session).delete(sport_id)
+    except ResourceNotFound as exc:
+        raise_http_error(exc)
+
+
 @app.post("/athletes", response_model=AthleteResponse, status_code=status.HTTP_201_CREATED)
 async def create_athlete(data: AthleteCreate, session: Session = Depends(get_session)):
     try:
@@ -71,6 +100,36 @@ async def get_athletes(
     session: Session = Depends(get_session),
 ):
     return AthleteService(session).list(sport_id, name)
+
+
+@app.get("/athletes/{athlete_id}", response_model=AthleteResponse)
+async def get_athlete(athlete_id: int, session: Session = Depends(get_session)):
+    try:
+        return AthleteService(session).get(athlete_id)
+    except ResourceNotFound as exc:
+        raise_http_error(exc)
+
+
+@app.patch("/athletes/{athlete_id}", response_model=AthleteResponse)
+async def update_athlete(
+    athlete_id: int, data: AthletePatch, session: Session = Depends(get_session)
+):
+    try:
+        return AthleteService(session).update(
+            athlete_id, data.model_dump(exclude_unset=True)
+        )
+    except (ResourceNotFound, ResourceConflict) as exc:
+        raise_http_error(exc)
+
+
+@app.delete("/athletes/{athlete_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_athlete(
+    athlete_id: int, session: Session = Depends(get_session)
+) -> None:
+    try:
+        AthleteService(session).delete(athlete_id)
+    except ResourceNotFound as exc:
+        raise_http_error(exc)
 
 
 @app.post("/results", response_model=ResultResponse, status_code=status.HTTP_201_CREATED)
@@ -129,7 +188,7 @@ async def get_sport_ranking(sport_id: int, session: Session = Depends(get_sessio
 @app.get("/sports/{sport_id}/statistics", response_model=SportStatistics)
 async def get_sport_statistics(sport_id: int, session: Session = Depends(get_session)):
     try:
-        sport, count, average, best = ResultService(session).statistics(sport_id)
+        sport, count, average, best, maximum = ResultService(session).statistics(sport_id)
     except ResourceNotFound as exc:
         raise_http_error(exc)
     return SportStatistics(
@@ -138,6 +197,7 @@ async def get_sport_statistics(sport_id: int, session: Session = Depends(get_ses
         results_count=count,
         average_result=float(average) if average is not None else None,
         best_result=float(best) if best is not None else None,
+        maximum_result=float(maximum) if maximum is not None else None,
     )
 
 

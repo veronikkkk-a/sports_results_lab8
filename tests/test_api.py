@@ -25,6 +25,7 @@ def test_create_patch_delete_result(client):
     patched = client.patch(f"/results/{result_id}", json={"value": 51.9})
     assert patched.status_code == 200
     assert patched.json()["value"] == 51.9
+    assert client.patch(f"/results/{result_id}", json={"value": None}).status_code == 422
     deleted = client.delete(f"/results/{result_id}")
     assert deleted.status_code == 204
     assert client.delete(f"/results/{result_id}").status_code == 404
@@ -35,6 +36,30 @@ def test_validation_and_not_found(client):
     })
     assert response.status_code == 422
     assert client.get("/sports/999/ranking").status_code == 404
+
+def test_sport_and_athlete_crud(client):
+    sport, athlete = create_sample(client)
+
+    assert client.get(f"/sports/{sport['id']}").json()["name"] == "Swimming"
+    changed_sport = client.patch(
+        f"/sports/{sport['id']}", json={"discipline": "Pool swimming"}
+    )
+    assert changed_sport.status_code == 200
+    assert changed_sport.json()["discipline"] == "Pool swimming"
+    assert client.patch(f"/sports/{sport['id']}", json={"name": None}).status_code == 422
+
+    assert client.get(f"/athletes/{athlete['id']}").json()["name"] == "Anna Koval"
+    changed_athlete = client.patch(
+        f"/athletes/{athlete['id']}", json={"category": "Senior"}
+    )
+    assert changed_athlete.status_code == 200
+    assert changed_athlete.json()["category"] == "Senior"
+    assert client.patch(f"/athletes/{athlete['id']}", json={"sport_id": None}).status_code == 422
+
+    assert client.delete(f"/athletes/{athlete['id']}").status_code == 204
+    assert client.get(f"/athletes/{athlete['id']}").status_code == 404
+    assert client.delete(f"/sports/{sport['id']}").status_code == 204
+    assert client.get(f"/sports/{sport['id']}").status_code == 404
 
 def test_ranking_and_statistics(client):
     sport, athlete = create_sample(client)
@@ -49,6 +74,8 @@ def test_ranking_and_statistics(client):
     stats = client.get(f"/sports/{sport['id']}/statistics").json()
     assert stats["results_count"] == 2
     assert stats["average_result"] == 52.15
+    assert stats["best_result"] == 51.9
+    assert stats["maximum_result"] == 52.4
 
 def test_async_rankings_for_multiple_sports(client):
     first_sport, first_athlete = create_sample(client)

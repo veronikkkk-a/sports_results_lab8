@@ -59,11 +59,11 @@ if USE_LAB7_PERSISTENCE:
                 return []
             return [(result, result.athlete) for result in super().ranking(sport.name)]
 
-        def statistics(self, sport_id: int) -> tuple[int, float | None, float | None]:
+        def statistics(self, sport_id: int) -> tuple[int, float | None, float | None, float | None]:
             rows = self.list_for_sport(sport_id)
             if not rows:
-                return 0, None, None
+                return 0, None, None, None
             values = [row.value for row in rows]
-            return len(values), sum(values) / len(values), min(values)
+            return len(values), sum(values) / len(values), min(values), max(values)
 else:
     from .repositories_local import AthleteRepository, ResultRepository, SportRepository
