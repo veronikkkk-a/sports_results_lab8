@@ -1,31 +1,35 @@
+from __future__ import annotations
+
 import os
-from pathlib import Path
-from sqlalchemy import create_engine, event
-from sqlalchemy.orm import sessionmaker
+from collections.abc import Generator
 
-from .models import Base, PROJECT_ROOT, USE_LAB7_PERSISTENCE
+from sqlalchemy import Engine, create_engine, event
+from sqlalchemy.orm import Session, sessionmaker
 
-PREVIOUS_LAB_DB = PROJECT_ROOT.parent / "lab7" / "sports_results.db"
-DEFAULT_DB = PREVIOUS_LAB_DB if PREVIOUS_LAB_DB.exists() else PROJECT_ROOT / "sports_results.db"
-DATABASE_URL = os.getenv("SPORTS_DB_URL", f"sqlite:///{DEFAULT_DB.as_posix()}")
-connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
-engine = create_engine(DATABASE_URL, connect_args=connect_args)
+from .models import Base
 
-if DATABASE_URL.startswith("sqlite"):
-    @event.listens_for(engine, "connect")
-    def enable_foreign_keys(dbapi_connection, _record):
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
-
-if USE_LAB7_PERSISTENCE:
-    from sports_streaming.database import make_session_factory
-    SessionLocal = make_session_factory(engine)
-else:
-    SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+DATABASE_URL = os.getenv("SPORTS_DB_URL", "sqlite:///sports_results.db")
 
 
-def get_session():
+def make_engine(url: str = DATABASE_URL) -> Engine:
+    connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
+    db_engine = create_engine(url, connect_args=connect_args)
+    if url.startswith("sqlite"):
+        @event.listens_for(db_engine, "connect")
+        def enable_foreign_keys(connection, _record) -> None:
+            connection.execute("PRAGMA foreign_keys=ON")
+    return db_engine
+
+
+engine = make_engine()
+SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
+
+def initialize_database() -> None:
+    Base.metadata.create_all(bind=engine)
+
+
+def get_session() -> Generator[Session, None, None]:
     session = SessionLocal()
     try:
         yield session

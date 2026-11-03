@@ -1,9 +1,8 @@
-# Лабораторна робота №8 — REST API спортивних результатів
+# Lab 08 — Sports Results API
 
-Варіант 9. API для видів спорту, спортсменів і результатів. Проєкт використовує FastAPI,
-Pydantic, SQLAlchemy, SQLite, HTTPX, asyncio Task/gather, timeout, retry та Semaphore.
+Variant 9. FastAPI REST service for sports, athletes, and competition results. The code is self-contained and follows the same model, repository, service, and database boundaries used in Lab 7.
 
-## Windows PowerShell (VS Code)
+## Install and run (Windows PowerShell)
 
 ```powershell
 python -m venv .venv
@@ -12,37 +11,36 @@ python -m pip install -e ".[test]"
 python -m uvicorn sports_api.api:app --reload
 ```
 
-Swagger UI: http://127.0.0.1:8000/docs
+Open Swagger UI at `http://127.0.0.1:8000/docs`.
 
-## REST endpoints
+Run tests in a second terminal:
 
-- `GET/POST /sports`, `GET/PATCH/DELETE /sports/{sport_id}`
-- `GET/POST /athletes`, `GET/PATCH/DELETE /athletes/{athlete_id}`
-- `POST /results`, `PATCH/DELETE /results/{result_id}`
-- `GET /sports/{sport_id}/results`, `/ranking`, and `/statistics`
-- `GET /async/rankings?sport_ids=1&sport_ids=2` for concurrent local rankings
-
-PATCH requests may include only fields to change. Required fields cannot be set to `null`; `competition_date` may be cleared with `null`.
-Statistics include the number of results, average, minimum (`best_result` for time-based events), and maximum.
-
-В іншому терміналі:
 ```powershell
 python -m pytest -v
 ```
 
-За замовчуванням застосунок використовує `../lab7/sports_results.db`, якщо цей файл існує.
-Так Lab 8 працює з даними та persistence layer попередньої лабораторної.
-Якщо БД Lab 7 розміщена в іншому місці, задайте `SPORTS_DB_URL` перед запуском, наприклад:
+The service creates `sports_results.db` in the working directory on first launch. To reuse the database created by Lab 7, set `SPORTS_DB_URL` before starting the API:
+
 ```powershell
-$env:SPORTS_DB_URL = "sqlite:///C:/шлях/до/sports_results.db"
+$env:SPORTS_DB_URL = "sqlite:///C:/Users/Veronika/Phyton/lab7/sports_results.db"
+python -m uvicorn sports_api.api:app --reload
 ```
-Схема попередньої БД має містити таблиці `sports`, `athletes` і `results` із полями, описаними в `models.py`.
 
+## REST API
 
-Асинхронні рейтинги кількох видів спорту: GET /async/rankings?sport_ids=1&sport_ids=2.
+| Method | Path | Action |
+| --- | --- | --- |
+| GET, POST | `/sports` | List or create sports |
+| GET, PATCH, DELETE | `/sports/{sport_id}` | Read, update, or delete one sport |
+| GET, POST | `/athletes` | Filter or create athletes |
+| GET, PATCH, DELETE | `/athletes/{athlete_id}` | Read, update, or delete one athlete |
+| POST | `/results` | Create one result |
+| POST | `/results/batch` | Atomically create a batch of results |
+| GET, PATCH, DELETE | `/results/{result_id}` | Read, update, or delete one result |
+| GET | `/sports/{sport_id}/results` | List results for a sport |
+| GET | `/sports/{sport_id}/ranking` | List results in ascending order (lower time is better) |
+| GET | `/sports/{sport_id}/statistics` | Count, average, minimum, and maximum |
+| GET | `/async/rankings?sport_ids=1&sport_ids=2` | Fetch several local rankings concurrently |
+| GET | `/async/external-rankings?league_ids=4328&league_ids=4331` | Fetch external league tables concurrently |
 
-Зовнішні таблиці ліг можна отримати паралельно через `GET /async/external-rankings?league_ids=4328&league_ids=4331`.
-Це числові ID ліг TheSportsDB. За потреби задайте ключ змінною `SPORTSDB_API_KEY`; для безкоштовного API використовується ключ `123`.
-Локальні рейтинги з бази проєкту доступні через `/async/rankings?sport_ids=1&sport_ids=2`.
-
-У робочому каталозі з Lab 7 застосунок повторно використовує `sports_streaming.db_models`, фабрику сесій і репозиторії з `../lab7/src/sports_streaming`. Якщо Lab 7 відсутня, запускається автономний резервний шар.
+The asynchronous endpoints demonstrate HTTPX `AsyncClient`, coroutines, `asyncio.Task`, `gather`, `Semaphore`, a request timeout, and retries. The external endpoint uses TheSportsDB's public JSON API; configure `SPORTSDB_API_KEY` to use a different key.

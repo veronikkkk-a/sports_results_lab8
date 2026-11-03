@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -16,41 +18,41 @@ class ResourceConflict(Exception):
 class SportService:
     def __init__(self, session: Session):
         self.session = session
-        self.sports = SportRepository(session)
+        self.repository = SportRepository(session)
 
-    def create(self, name: str, discipline: str) -> Sport:
+    def create(self, values: dict) -> Sport:
         try:
-            return self.sports.add(Sport(name=name, discipline=discipline))
+            sport = self.repository.add(Sport(**values))
+            self.session.commit()
+            self.session.refresh(sport)
+            return sport
         except IntegrityError as exc:
             self.session.rollback()
             raise ResourceConflict("Sport name already exists") from exc
 
-    def list(self) -> list[Sport]:
-        return self.sports.list()
-
     def get(self, sport_id: int) -> Sport:
-        sport = self.sports.get(sport_id)
+        sport = self.repository.get(sport_id)
         if sport is None:
             raise ResourceNotFound("Sport not found")
         return sport
 
-    def update(self, sport_id: int, updates: dict) -> Sport:
+    def list(self) -> list[Sport]:
+        return self.repository.list_all()
+
+    def update(self, sport_id: int, values: dict) -> Sport:
+        sport = self.get(sport_id)
         try:
-            sport = self.sports.update(sport_id, **updates)
-            if sport is None:
-                raise ResourceNotFound("Sport not found")
+            self.repository.update(sport, values)
             self.session.commit()
             self.session.refresh(sport)
             return sport
-        except ResourceNotFound:
-            raise
         except IntegrityError as exc:
             self.session.rollback()
             raise ResourceConflict("Sport name already exists") from exc
 
     def delete(self, sport_id: int) -> None:
-        if not self.sports.delete(sport_id):
-            raise ResourceNotFound("Sport not found")
+        sport = self.get(sport_id)
+        self.repository.delete(sport)
         self.session.commit()
 
 
@@ -58,46 +60,47 @@ class AthleteService:
     def __init__(self, session: Session):
         self.session = session
         self.sports = SportRepository(session)
-        self.athletes = AthleteRepository(session)
+        self.repository = AthleteRepository(session)
 
-    def create(self, name: str, category: str, sport_id: int) -> Athlete:
-        if self.sports.get(sport_id) is None:
+    def create(self, values: dict) -> Athlete:
+        if self.sports.get(values["sport_id"]) is None:
             raise ResourceNotFound("Sport not found")
         try:
-            return self.athletes.add(Athlete(name=name, category=category, sport_id=sport_id))
+            athlete = self.repository.add(Athlete(**values))
+            self.session.commit()
+            self.session.refresh(athlete)
+            return athlete
         except IntegrityError as exc:
             self.session.rollback()
             raise ResourceConflict("Athlete already exists for this sport") from exc
 
-    def list(self, sport_id: int | None = None, name: str | None = None) -> list[Athlete]:
-        return self.athletes.list(sport_id, name)
-
     def get(self, athlete_id: int) -> Athlete:
-        athlete = self.athletes.get(athlete_id)
+        athlete = self.repository.get(athlete_id)
         if athlete is None:
             raise ResourceNotFound("Athlete not found")
         return athlete
 
-    def update(self, athlete_id: int, updates: dict) -> Athlete:
-        sport_id = updates.get("sport_id")
+    def list(self, sport_id: int | None = None, name: str | None = None) -> list[Athlete]:
+        if sport_id is not None and self.sports.get(sport_id) is None:
+            raise ResourceNotFound("Sport not found")
+        return self.repository.list_all(sport_id, name)
+
+    def update(self, athlete_id: int, values: dict) -> Athlete:
+        athlete = self.get(athlete_id)
+        sport_id = values.get("sport_id")
         if sport_id is not None and self.sports.get(sport_id) is None:
             raise ResourceNotFound("Sport not found")
         try:
-            athlete = self.athletes.update(athlete_id, **updates)
-            if athlete is None:
-                raise ResourceNotFound("Athlete not found")
+            self.repository.update(athlete, values)
             self.session.commit()
             self.session.refresh(athlete)
             return athlete
-        except ResourceNotFound:
-            raise
         except IntegrityError as exc:
             self.session.rollback()
             raise ResourceConflict("Athlete already exists for this sport") from exc
 
     def delete(self, athlete_id: int) -> None:
-        if not self.athletes.delete(athlete_id):
-            raise ResourceNotFound("Athlete not found")
+        self.repository.delete(self.get(athlete_id))
         self.session.commit()
 
 
@@ -106,44 +109,66 @@ class ResultService:
         self.session = session
         self.sports = SportRepository(session)
         self.athletes = AthleteRepository(session)
-        self.results = ResultRepository(session)
+        self.repository = ResultRepository(session)
 
     def create(self, values: dict) -> Result:
         if self.athletes.get(values["athlete_id"]) is None:
             raise ResourceNotFound("Athlete not found")
-        return self.results.add(Result(**values))
+        try:
+            result = self.repository.add(Result(**values))
+            self.session.commit()
+            self.session.refresh(result)
+            return result
+        except IntegrityError:
+            self.session.rollback()
+            raise
 
-    def update(self, result_id: int, updates: dict) -> Result:
-        result = self.results.get(result_id)
+    def create_batch(self, items: list[dict]) -> list[Result]:
+        athlete_ids = {item["athlete_id"] for item in items}
+        missing = [item_id for item_id in athlete_ids if self.athletes.get(item_id) is None]
+        if missing:
+            raise ResourceNotFound(f"Athlete not found: {missing[0]}")
+        try:
+            results = self.repository.add_many([Result(**item) for item in items])
+            self.session.commit()
+            for result in results:
+                self.session.refresh(result)
+            return results
+        except Exception:
+            self.session.rollback()
+            raise
+
+    def get(self, result_id: int) -> Result:
+        result = self.repository.get(result_id)
         if result is None:
             raise ResourceNotFound("Result not found")
-        athlete_id = updates.get("athlete_id")
+        return result
+
+    def update(self, result_id: int, values: dict) -> Result:
+        result = self.get(result_id)
+        athlete_id = values.get("athlete_id")
         if athlete_id is not None and self.athletes.get(athlete_id) is None:
             raise ResourceNotFound("Athlete not found")
-        for field, value in updates.items():
-            setattr(result, field, value)
+        self.repository.update(result, values)
         self.session.commit()
         self.session.refresh(result)
         return result
 
     def delete(self, result_id: int) -> None:
-        result = self.results.get(result_id)
-        if result is None:
-            raise ResourceNotFound("Result not found")
-        self.session.delete(result)
+        self.repository.delete(self.get(result_id))
         self.session.commit()
 
     def list_for_sport(self, sport_id: int) -> list[Result]:
         self._require_sport(sport_id)
-        return self.results.list_for_sport(sport_id)
+        return self.repository.list_for_sport(sport_id)
 
-    def ranking(self, sport_id: int) -> list[tuple[Result, Athlete]]:
+    def ranking(self, sport_id: int) -> list[Result]:
         self._require_sport(sport_id)
-        return self.results.ranking(sport_id)
+        return self.repository.ranking(sport_id)
 
     def statistics(self, sport_id: int) -> tuple[Sport, int, float | None, float | None, float | None]:
         sport = self._require_sport(sport_id)
-        count, average, best, maximum = self.results.statistics(sport_id)
+        count, average, best, maximum = self.repository.statistics(sport_id)
         return sport, count, average, best, maximum
 
     def _require_sport(self, sport_id: int) -> Sport:
