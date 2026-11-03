@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .database import Base, engine, get_session
-from .external_api import fetch_many_sport_rankings
+from .external_api import fetch_many_external_rankings, fetch_many_sport_rankings
 from .schemas import (
     AthleteCreate, AthleteResponse, RankingEntry, ResultCreate, ResultPatch,
     ResultResponse, SportCreate, SportResponse, SportStatistics,
@@ -164,3 +164,25 @@ async def get_async_rankings(sport_ids: list[int] = Query(default=[1, 2])):
 
 
 
+
+
+@app.get("/async/external-rankings")
+async def get_external_rankings(league_ids: list[int] = Query(...)):
+    """Паралельно отримує турнірні таблиці ліг із TheSportsDB."""
+    if not league_ids or any(league_id <= 0 for league_id in league_ids):
+        raise HTTPException(status_code=422, detail="league_ids must contain positive IDs")
+    league_ids = list(dict.fromkeys(league_ids))
+    if len(league_ids) > 5:
+        raise HTTPException(status_code=422, detail="A maximum of 5 league IDs is allowed")
+    try:
+        return await asyncio.wait_for(
+            fetch_many_external_rankings(league_ids), timeout=12.0
+        )
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(status_code=504, detail="External sports API timeout") from exc
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=502, detail=f"TheSportsDB returned HTTP {exc.response.status_code}"
+        ) from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail="External sports API request failed") from exc

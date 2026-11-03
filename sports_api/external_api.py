@@ -1,4 +1,5 @@
 import asyncio
+import os
 from typing import Any
 
 import httpx
@@ -28,23 +29,50 @@ async def fetch_many_sport_rankings(
     sport_ids: list[int],
     concurrency: int = 3,
 ) -> list[dict[str, Any]]:
-    """Паралельно отримує рейтинги через HTTP API з обмеженням паралельності."""
+    """Паралельно читає рейтинги застосунку через його REST API."""
     semaphore = asyncio.Semaphore(concurrency)
-    timeout = httpx.Timeout(5.0)
     transport = httpx.ASGITransport(app=app)
-
     async with httpx.AsyncClient(
         transport=transport,
         base_url="http://sports-api.local",
-        timeout=timeout,
+        timeout=httpx.Timeout(5.0),
     ) as client:
         async def fetch_one(sport_id: int) -> dict[str, Any]:
             async with semaphore:
                 ranking = await get_json_with_retry(
-                    client,
-                    f"/sports/{sport_id}/ranking",
+                    client, f"/sports/{sport_id}/ranking"
                 )
                 return {"sport_id": sport_id, "ranking": ranking}
 
         tasks = [asyncio.create_task(fetch_one(sport_id)) for sport_id in sport_ids]
+        return await asyncio.gather(*tasks)
+
+
+async def fetch_many_external_rankings(
+    league_ids: list[int],
+    concurrency: int = 3,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> list[dict[str, Any]]:
+    """Отримує таблиці ліг із зовнішнього TheSportsDB API паралельними запитами."""
+    api_key = os.getenv("SPORTSDB_API_KEY", "123")
+    semaphore = asyncio.Semaphore(concurrency)
+    base_url = f"https://www.thesportsdb.com/api/v1/json/{api_key}"
+
+    async with httpx.AsyncClient(
+        base_url=base_url,
+        timeout=httpx.Timeout(5.0),
+        transport=transport,
+    ) as client:
+        async def fetch_one(league_id: int) -> dict[str, Any]:
+            async with semaphore:
+                data = await get_json_with_retry(
+                    client,
+                    f"/lookuptable.php?l={league_id}",
+                )
+                return {
+                    "league_id": league_id,
+                    "table": data.get("table") or [],
+                }
+
+        tasks = [asyncio.create_task(fetch_one(league_id)) for league_id in league_ids]
         return await asyncio.gather(*tasks)
