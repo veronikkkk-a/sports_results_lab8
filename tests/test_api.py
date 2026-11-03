@@ -49,3 +49,34 @@ def test_ranking_and_statistics(client):
     stats = client.get(f"/sports/{sport['id']}/statistics").json()
     assert stats["results_count"] == 2
     assert stats["average_result"] == 52.15
+
+def test_async_rankings_for_multiple_sports(client):
+    first_sport, first_athlete = create_sample(client)
+    first_result = client.post("/results", json={
+        "athlete_id": first_athlete["id"], "value": 52.4,
+        "competition_name": "City Cup",
+    })
+    assert first_result.status_code == 201
+
+    second_sport = client.post("/sports", json={
+        "name": "Athletics", "discipline": "Track",
+    }).json()
+    second_athlete = client.post("/athletes", json={
+        "name": "Oleh Marchenko", "category": "Senior",
+        "sport_id": second_sport["id"],
+    }).json()
+    second_result = client.post("/results", json={
+        "athlete_id": second_athlete["id"], "value": 10.8,
+        "competition_name": "Track Meet",
+    })
+    assert second_result.status_code == 201
+
+    response = client.get(
+        "/async/rankings",
+        params=[("sport_ids", first_sport["id"]), ("sport_ids", second_sport["id"])],
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert [entry["sport_id"] for entry in data] == [first_sport["id"], second_sport["id"]]
+    assert data[0]["ranking"][0]["value"] == 52.4
+    assert data[1]["ranking"][0]["value"] == 10.8

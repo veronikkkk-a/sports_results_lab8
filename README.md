@@ -28,3 +28,5 @@ $env:SPORTS_DB_URL = "sqlite:///C:/шлях/до/sports_results.db"
 Схема таблиць відповідає `sports`, `athletes`, `results` з Lab 07; якщо у вашому проєкті
 назви полів або типи відрізняються, узгодьте їх із `models.py` перед підключенням.
 
+
+Асинхронні рейтинги кількох видів спорту: GET /async/rankings?sport_ids=1&sport_ids=2.

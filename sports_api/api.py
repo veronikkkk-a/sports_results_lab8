@@ -1,4 +1,6 @@
 import asyncio
+
+import httpx
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
@@ -6,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .database import Base, engine, get_session
-from .external_api import fetch_many_public_posts
+from .external_api import fetch_many_sport_rankings
 from .schemas import (
     AthleteCreate, AthleteResponse, RankingEntry, ResultCreate, ResultPatch,
     ResultResponse, SportCreate, SportResponse, SportStatistics,
@@ -139,15 +141,26 @@ async def get_sport_statistics(sport_id: int, session: Session = Depends(get_ses
     )
 
 
-@app.get("/async/public-posts")
-async def get_public_posts(ids: list[int] = Query(default=[1, 2, 3], ge=1, le=100)):
-    """Демонстрація Task/gather/Semaphore/HTTPX; потребує доступу до Інтернету."""
+@app.get("/async/rankings")
+async def get_async_rankings(sport_ids: list[int] = Query(default=[1, 2])):
+    """Паралельно збирає рейтинги кількох видів спорту через HTTPX."""
+    if not sport_ids or any(sport_id <= 0 for sport_id in sport_ids):
+        raise HTTPException(status_code=422, detail="sport_ids must contain positive IDs")
+    if len(sport_ids) > 20:
+        raise HTTPException(status_code=422, detail="A maximum of 20 sport IDs is allowed")
     try:
-        return await asyncio.wait_for(fetch_many_public_posts(ids), timeout=12.0)
+        return await asyncio.wait_for(
+            fetch_many_sport_rankings(app, list(dict.fromkeys(sport_ids))),
+            timeout=12.0,
+        )
     except asyncio.TimeoutError as exc:
-        raise HTTPException(status_code=504, detail="External API timeout") from exc
-    except Exception as exc:
-        raise HTTPException(
-            status_code=502,
-            detail=f"External API request failed: {type(exc).__name__}",
-        ) from exc
+        raise HTTPException(status_code=504, detail="Ranking request timed out") from exc
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Sport not found") from exc
+        raise HTTPException(status_code=502, detail="Ranking request failed") from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail="Ranking request failed") from exc
+
+
+
