@@ -33,3 +33,5 @@ $env:SPORTS_DB_URL = "sqlite:///C:/шлях/до/sports_results.db"
 Зовнішні таблиці ліг можна отримати паралельно через `GET /async/external-rankings?league_ids=4328&league_ids=4331`.
 Це числові ID ліг TheSportsDB. За потреби задайте ключ змінною `SPORTSDB_API_KEY`; для безкоштовного API використовується ключ `123`.
 Локальні рейтинги з бази проєкту доступні через `/async/rankings?sport_ids=1&sport_ids=2`.
+
+У робочому каталозі з Lab 7 застосунок повторно використовує `sports_streaming.db_models`, фабрику сесій і репозиторії з `../lab7/src/sports_streaming`. Якщо Lab 7 відсутня, запускається автономний резервний шар.

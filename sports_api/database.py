@@ -1,13 +1,13 @@
 import os
 from pathlib import Path
 from sqlalchemy import create_engine, event
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+from .models import Base, PROJECT_ROOT, USE_LAB7_PERSISTENCE
+
 PREVIOUS_LAB_DB = PROJECT_ROOT.parent / "lab7" / "sports_results.db"
 DEFAULT_DB = PREVIOUS_LAB_DB if PREVIOUS_LAB_DB.exists() else PROJECT_ROOT / "sports_results.db"
 DATABASE_URL = os.getenv("SPORTS_DB_URL", f"sqlite:///{DEFAULT_DB.as_posix()}")
-
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 engine = create_engine(DATABASE_URL, connect_args=connect_args)
 
@@ -18,10 +18,12 @@ if DATABASE_URL.startswith("sqlite"):
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
 
-SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+if USE_LAB7_PERSISTENCE:
+    from sports_streaming.database import make_session_factory
+    SessionLocal = make_session_factory(engine)
+else:
+    SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
-class Base(DeclarativeBase):
-    pass
 
 def get_session():
     session = SessionLocal()

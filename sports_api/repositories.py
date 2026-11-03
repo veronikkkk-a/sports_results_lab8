@@ -1,74 +1,69 @@
+"""Lab 8 API adapters over the Lab 7 repository implementations."""
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .models import Athlete, Result, Sport
+from .models import Athlete, Result, Sport, USE_LAB7_PERSISTENCE
 
+if USE_LAB7_PERSISTENCE:
+    from sports_streaming.repositories import (
+        AthleteRepository as Lab7AthleteRepository,
+        ResultRepository as Lab7ResultRepository,
+        SportRepository as Lab7SportRepository,
+    )
 
-class SportRepository:
-    def __init__(self, session: Session):
-        self.session = session
+    class SportRepository(Lab7SportRepository):
+        def list(self) -> list[Sport]:
+            return self.list_all()
 
-    def get(self, sport_id: int) -> Sport | None:
-        return self.session.get(Sport, sport_id)
+        def add(self, sport: Sport) -> Sport:
+            item = super().add(sport.name, sport.discipline)
+            self.session.commit()
+            self.session.refresh(item)
+            return item
 
-    def list(self) -> list[Sport]:
-        return list(self.session.scalars(select(Sport).order_by(Sport.name)))
+    class AthleteRepository(Lab7AthleteRepository):
+        def list(self, sport_id: int | None = None, name: str | None = None) -> list[Athlete]:
+            athletes = self.list_all(sport_id)
+            if name:
+                query = name.casefold()
+                athletes = [athlete for athlete in athletes if query in athlete.name.casefold()]
+            return athletes
 
-    def add(self, sport: Sport) -> Sport:
-        self.session.add(sport)
-        self.session.commit()
-        self.session.refresh(sport)
-        return sport
+        def add(self, athlete: Athlete) -> Athlete:
+            item = super().add(athlete.name, athlete.category, athlete.sport_id)
+            self.session.commit()
+            self.session.refresh(item)
+            return item
 
+    class ResultRepository(Lab7ResultRepository):
+        def add(self, result: Result) -> Result:
+            item = super().add(
+                result.athlete_id,
+                result.value,
+                result.competition_name,
+                result.competition_date,
+            )
+            self.session.commit()
+            self.session.refresh(item)
+            return item
 
-class AthleteRepository:
-    def __init__(self, session: Session):
-        self.session = session
+        def list_for_sport(self, sport_id: int) -> list[Result]:
+            sport = self.session.get(Sport, sport_id)
+            if sport is None:
+                return []
+            return self.list_all(sport.name)
 
-    def get(self, athlete_id: int) -> Athlete | None:
-        return self.session.get(Athlete, athlete_id)
+        def ranking(self, sport_id: int) -> list[tuple[Result, Athlete]]:
+            sport = self.session.get(Sport, sport_id)
+            if sport is None:
+                return []
+            return [(result, result.athlete) for result in super().ranking(sport.name)]
 
-    def list(self, sport_id: int | None = None, name: str | None = None) -> list[Athlete]:
-        statement = select(Athlete)
-        if sport_id is not None:
-            statement = statement.where(Athlete.sport_id == sport_id)
-        if name:
-            statement = statement.where(Athlete.name.ilike(f"%{name}%"))
-        return list(self.session.scalars(statement.order_by(Athlete.name)))
-
-    def add(self, athlete: Athlete) -> Athlete:
-        self.session.add(athlete)
-        self.session.commit()
-        self.session.refresh(athlete)
-        return athlete
-
-
-class ResultRepository:
-    def __init__(self, session: Session):
-        self.session = session
-
-    def get(self, result_id: int) -> Result | None:
-        return self.session.get(Result, result_id)
-
-    def add(self, result: Result) -> Result:
-        self.session.add(result)
-        self.session.commit()
-        self.session.refresh(result)
-        return result
-
-    def list_for_sport(self, sport_id: int) -> list[Result]:
-        statement = select(Result).join(Athlete).where(Athlete.sport_id == sport_id)
-        return list(self.session.scalars(statement.order_by(Result.value)))
-
-    def ranking(self, sport_id: int) -> list[tuple[Result, Athlete]]:
-        statement = (select(Result, Athlete)
-            .join(Athlete, Result.athlete_id == Athlete.id)
-            .where(Athlete.sport_id == sport_id)
-            .order_by(Result.value.asc()))
-        return list(self.session.execute(statement).all())
-
-    def statistics(self, sport_id: int) -> tuple[int, float | None, float | None]:
-        statement = (select(func.count(Result.id), func.avg(Result.value), func.min(Result.value))
-            .join(Athlete, Result.athlete_id == Athlete.id)
-            .where(Athlete.sport_id == sport_id))
-        return self.session.execute(statement).one()
+        def statistics(self, sport_id: int) -> tuple[int, float | None, float | None]:
+            rows = self.list_for_sport(sport_id)
+            if not rows:
+                return 0, None, None
+            values = [row.value for row in rows]
+            return len(values), sum(values) / len(values), min(values)
+else:
+    from .repositories_local import AthleteRepository, ResultRepository, SportRepository
