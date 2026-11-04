@@ -1,45 +1,38 @@
-import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
+from datetime import datetime
+import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+from sports_streaming.db_models import Base
+from sports_streaming.repositories import SportRepository, AthleteRepository
 
-from sports_api.api import app
-from sports_api.database import get_session
-from sports_api.models import Base
+@pytest.fixture
+def engine():
+    engine = create_engine("sqlite+pysqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    @event.listens_for(engine, "connect")
+    def fk_on(dbapi_connection, _):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+    Base.metadata.create_all(engine)
+    yield engine
+    engine.dispose()
 
+@pytest.fixture
+def session(engine):
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with factory() as session:
+        yield session
+        session.rollback()
 
-@pytest_asyncio.fixture
-async def client():
-    test_engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
+# Додаємо аліас db_session для сумісності з тестами endpoints
+@pytest.fixture
+def db_session(session):
+    return session
 
-    @event.listens_for(test_engine, "connect")
-    def enable_foreign_keys(connection, _record):
-        connection.execute("PRAGMA foreign_keys=ON")
-
-    test_session_factory = sessionmaker(
-        bind=test_engine, autoflush=False, expire_on_commit=False
-    )
-    Base.metadata.create_all(bind=test_engine)
-
-    def override_session():
-        session = test_session_factory()
-        try:
-            yield session
-        finally:
-            session.close()
-
-    app.dependency_overrides[get_session] = override_session
-    try:
-        async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
-        ) as test_client:
-            yield test_client
-    finally:
-        app.dependency_overrides.clear()
-        Base.metadata.drop_all(bind=test_engine)
-        test_engine.dispose()
+@pytest.fixture
+def seed(session):
+    sport = SportRepository(session).add("Swimming", "Aquatics")
+    athlete = AthleteRepository(session).add("Anna Koval", "Junior", sport.id)
+    session.commit()
+    return sport, athlete

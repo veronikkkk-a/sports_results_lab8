@@ -1,46 +1,63 @@
-# Lab 08 — Sports Results API
+# Лабораторна робота №7 — база даних спортивних результатів
 
-Variant 9. FastAPI REST service for sports, athletes, and competition results. The code is self-contained and follows the same model, repository, service, and database boundaries used in Lab 7.
+Варіант 9 продовжує пакет `sports_streaming` із попередніх робіт: CSV-валідація та потокова обробка збережені, а persistence layer записує результати у SQLite. Він побудований на SQLAlchemy ORM і Repository Pattern; окремий DB-API запит показує параметризований пошук за видом спорту.
 
-## Install and run (Windows PowerShell)
+## Встановлення та запуск (PowerShell)
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e ".[test]"
-python -m uvicorn sports_api.api:app --reload
+python -m alembic upgrade head
+python -m sports_streaming.main --persist-db
+python -m uvicorn sports_streaming.api:app --reload
 ```
 
-Open Swagger UI at `http://127.0.0.1:8000/docs`.
+## REST API (ЛР 8)
 
-Run tests in a second terminal:
+FastAPI працює з тими самими таблицями SQLite і Repository Layer, що й імпорт CSV.
+Документація OpenAPI доступна на `http://127.0.0.1:8000/docs`.
+
+Основні маршрути:
+
+| Метод | Маршрут | Призначення |
+|---|---|---|
+| GET | `/athletes?sport_id=1&name=Anna` | Список і фільтрація спортсменів |
+| POST | `/athletes` | Створення спортсмена |
+| GET | `/results?sport_id=1` | Перелік результатів |
+| POST | `/results` | Додавання результату |
+| PATCH / DELETE | `/results/{result_id}` | Зміна / видалення результату |
+| GET | `/sports/{sport_id}/results` | Результати виду спорту |
+| GET | `/sports/{sport_id}/ranking?limit=10` | Рейтинг (менше значення — вище місце) |
+| GET | `/sports/{sport_id}/statistics` | Кількість, середнє та найкраще значення |
+| GET | `/rankings/parallel?sport_ids=1&sport_ids=2` | HTTPX запити до кількох рейтингів паралельно |
+
+Асинхронний агрегатор використовує `asyncio.Task`, `gather`, `Semaphore`, timeout та retry.
+Налаштовуються `base_url`, `timeout_seconds`, `retries` і `concurrency`. Для локального запуску:
+
+```powershell
+python -m uvicorn sports_streaming.api:app --reload
+```
+
+Без прапорця `--persist-db` попередній режим CSV → JSON продовжує працювати. Типовий файл бази `sports_results.db` створюється в корені проєкту. Можна передати інший шлях:
+
+```powershell
+python -m sports_streaming.main --persist-db --database-url "sqlite:///my_results.db"
+```
+
+## Тести
 
 ```powershell
 python -m pytest -v
 ```
 
-The service creates `sports_results.db` in the working directory on first launch. To reuse the database created by Lab 7, set `SPORTS_DB_URL` before starting the API:
+Тести запускаються на окремій SQLite in-memory базі; вони не торкаються production БД. Є перевірки CRUD для всіх трьох сутностей, зв'язків, обмежень, DB-API-фільтра, AVG/MAX-рейтингів, commit/rollback та Alembic migrations.
 
-```powershell
-$env:SPORTS_DB_URL = "sqlite:///C:/Users/Veronika/Phyton/lab7/sports_results.db"
-python -m uvicorn sports_api.api:app --reload
+## Структура
+
+```text
+src/sports_streaming/  # ЛР5/ЛР6-пакет і persistence layer
+migrations/             # початкова схема та migration з датою змагання
+tests/integration/      # інтеграційні перевірки на тестовій SQLite
+report/                 # звіт та докази запуску
 ```
-
-## REST API
-
-| Method | Path | Action |
-| --- | --- | --- |
-| GET, POST | `/sports` | List or create sports |
-| GET, PATCH, DELETE | `/sports/{sport_id}` | Read, update, or delete one sport |
-| GET, POST | `/athletes` | Filter or create athletes |
-| GET, PATCH, DELETE | `/athletes/{athlete_id}` | Read, update, or delete one athlete |
-| POST | `/results` | Create one result |
-| POST | `/results/batch` | Atomically create a batch of results |
-| GET, PATCH, DELETE | `/results/{result_id}` | Read, update, or delete one result |
-| GET | `/sports/{sport_id}/results` | List results for a sport |
-| GET | `/sports/{sport_id}/ranking` | List results in ascending order (lower time is better) |
-| GET | `/sports/{sport_id}/statistics` | Count, average, minimum, and maximum |
-| GET | `/async/rankings?sport_ids=1&sport_ids=2` | Fetch several local rankings concurrently |
-| GET | `/async/external-rankings?league_ids=4328&league_ids=4331` | Fetch external league tables concurrently |
-
-The asynchronous endpoints demonstrate HTTPX `AsyncClient`, coroutines, `asyncio.Task`, `gather`, `Semaphore`, a request timeout, and retries. The external endpoint uses TheSportsDB's public JSON API; configure `SPORTSDB_API_KEY` to use a different key.

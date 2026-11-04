@@ -1,0 +1,20 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.14, pytest-9.2.0, pluggy-1.7.0 -- C:\Users\Veronika\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\Veronika\Documents\Codex\2026-10-27\db\outputs\SportsResultsLab07
+configfile: pyproject.toml
+testpaths: tests
+collecting ... collected 10 items
+
+tests/integration/test_migrations.py::test_alembic_applies_schema_and_competition_date PASSED [ 10%]
+tests/integration/test_persistence.py::test_sport_crud PASSED            [ 20%]
+tests/integration/test_persistence.py::test_athlete_crud PASSED          [ 30%]
+tests/integration/test_persistence.py::test_result_crud PASSED           [ 40%]
+tests/integration/test_persistence.py::test_foreign_key_and_check_constraints PASSED [ 50%]
+tests/integration/test_persistence.py::test_parameterized_dbapi_filter_and_sport_isolation PASSED [ 60%]
+tests/integration/test_persistence.py::test_best_average_and_ranking PASSED [ 70%]
+tests/integration/test_persistence.py::test_batch_transaction_commit PASSED [ 80%]
+tests/integration/test_persistence.py::test_batch_transaction_rolls_back_all_on_invalid_row PASSED [ 90%]
+tests/integration/test_persistence.py::test_persist_imported_results_creates_related_records PASSED [100%]
+
+============================= 10 passed in 0.54s ==============================
